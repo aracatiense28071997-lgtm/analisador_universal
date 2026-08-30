@@ -22,7 +22,7 @@ LIGAS_UNDERSTAT = {
 @st.cache_data(ttl=600)
 def buscar_dados_understat(liga_nome):
     try:
-        url = f"https://understat.com{LIGAS_UNDERSTAT[liga_nome]}"
+        url = f"https://understat.com/league/{LIGAS_UNDERSTAT[liga_nome]}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         
         response = requests.get(url, headers=headers, timeout=15)

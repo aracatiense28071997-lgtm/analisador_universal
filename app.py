@@ -17,22 +17,23 @@ LIGAS_ESTATISTICAS = {
     "Serie A (Itália)": "https://fbref.com",
     "Ligue 1 (França)": "https://fbref.com"
 }
-
 @st.cache_data(ttl=600)
 def buscar_estatisticas_fbref(url_liga):
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive'
         }
         
         req = urllib.request.Request(url_liga, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as response:
             html = response.read()
             
-        tabelas = pd.read_html(html)
+        # IMPORTANTE: Passamos o HTML baixado em formato de texto para o Pandas, evitando que ele recrie a conexão sem proteção
+        tabelas = pd.read_html(str(html, encoding='utf-8'))
         
-        # Procura a tabela de estatísticas padrão das equipes (Squad Regular Season Stats)
         df_stats = pd.DataFrame()
         for t in tabelas:
             if isinstance(t.columns, pd.MultiIndex):
@@ -44,17 +45,26 @@ def buscar_estatisticas_fbref(url_liga):
         if df_stats.empty:
             raise ValueError("Tabela de estatísticas não encontrada.")
             
-        # Filtra e organiza apenas as métricas de performance reais por jogo
         df_stats = df_stats.dropna(subset=['Squad'])
         df_stats = df_stats[~df_stats['Squad'].str.contains('vs Opponent|Total')]
         
-        # Tratamento numérico seguro das colunas do FBref
         df_stats['MP'] = pd.to_numeric(df_stats['MP'], errors='coerce').fillna(1)
         df_stats['Gls_Media'] = pd.to_numeric(df_stats['Gls'], errors='coerce') / df_stats['MP']
         df_stats['xG_Media'] = pd.to_numeric(df_stats['xG'], errors='coerce') / df_stats['MP']
         df_stats['Sh_Media'] = pd.to_numeric(df_stats['Sh'], errors='coerce') / df_stats['MP']
         df_stats['CrdY_Media'] = pd.to_numeric(df_stats['CrdY'], errors='coerce') / df_stats['MP']
-        df_stats['Fls_Media'] = pd.to_numeric(df_stats['Fls'], errors='coerce', default=12.5) / df_stats['MP']
+        
+        # Correção segura para a coluna de faltas se o site omitir em alguma liga
+        if 'Fls' in df_stats.columns:
+            df_stats['Fls_Media'] = pd.to_numeric(df_stats['Fls'], errors='coerce').fillna(12.5) / df_stats['MP']
+        else:
+            df_stats['Fls_Media'] = 12.5
+        
+        return df_stats[['Squad', 'MP', 'Gls_Media', 'xG_Media', 'Sh_Media', 'CrdY_Media', 'Fls_Media']]
+    except Exception as e:
+        st.error(f"Erro ao conectar com a base estatística: {e}")
+        return pd.DataFrame()
+
         
         return df_stats[['Squad', 'MP', 'Gls_Media', 'xG_Media', 'Sh_Media', 'CrdY_Media', 'Fls_Media']]
     except Exception as e:

@@ -73,13 +73,13 @@ def raspar_dados_fbref(url_liga, nome_liga):
         dados_seguranca = {
             'Mandante': m * 5,
             'Visitante': v * 5,
-            'Gols_Mandante': [2, 1, 0, 3, 1, 2] * 5,
-            'Gols_Visitante': [1, 1, 1, 2, 0, 1] * 5
+            'Gols_Mandante': [1, 2, 0, 3, 1, 2] * 5,
+            'Gols_Visitante': [1, 0, 2, 1, 1, 0] * 5
         }
         return pd.DataFrame(dados_seguranca)
 
 # --- INTERFACE DE SELEÇÃO ---
-st.sidebar.header("🌍 Seleção de Campeonato")
+st.sidebar.header("🔍 Seleção de Campeonato")
 liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga", list(LIGAS_DISPONIVEIS.keys()))
 
 df = raspar_dados_fbref(LIGAS_DISPONIVEIS[liga_escolhida], liga_escolhida)
@@ -102,7 +102,7 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     hist_casa = df[(df['Mandante'] == time_a) & (df['Gols_Mandante'].notna())]
     hist_fora = df[(df['Visitante'] == time_b) & (df['Gols_Visitante'].notna())]
     
-    # Se os times não tiverem histórico recente computado (início de torneio), usa a média padrão da liga
+    # Se os times não tiverem histórico recente computado, usa a média padrão da liga
     gols_pro_casa = hist_casa['Gols_Mandante'].mean() if not hist_casa.empty else 1.5
     gols_contra_casa = hist_casa['Gols_Visitante'].mean() if not hist_casa.empty else 1.1
     gols_pro_fora = hist_fora['Gols_Visitante'].mean() if not hist_fora.empty else 1.2
@@ -114,10 +114,8 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     expectativa_gols = placar_casa + placar_fora
 
     # --- CÁLCULO REALISTA DE AMBAS MARCAM ---
-    # Verifica a porcentagem real de jogos em que o Mandante fez gols em casa
     jogos_marcou_casa = len(hist_casa[hist_casa['Gols_Mandante'] > 0]) / len(hist_casa) if not hist_casa.empty else 0.75
-    # Verifica a porcentagem real de jogos em que o Visitante fez gols fora
-    jogos_marcou_fora = len(hist_fora[hist_fora['Gols_Visitante'] > 0]) / len(hist_fora) if not font_fora.empty if not hist_fora.empty else 0.70
+    jogos_marcou_fora = len(hist_fora[hist_fora['Gols_Visitante'] > 0]) / len(hist_fora) if not hist_fora.empty else 0.70
     prob_ambas_marcam = (jogos_marcou_casa + jogos_marcou_fora) / 2
     tip_ambas = "AMBAS MARCAM: SIM" if prob_ambas_marcam >= 0.65 else "AMBAS MARCAM: NÃO"
 
@@ -142,11 +140,10 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     }
     st.table(pd.DataFrame(dados_mercado))
 
-    # --- ELEIÇÃO DA MELHOR ENTRADA (MAIOR MARGEM REAL) ---
+    # --- ELEIÇÃO DA MELHOR ENTRADA ---
     st.markdown("---")
     st.markdown("## 👑 A MELHOR ENTRADA PARA ESTA PARTIDA")
     
-    # Compara as margens de distância das linhas para pegar o palpite mais firme
     distancia_gols = abs(expectativa_gols - 2.5)
     distancia_ambas = abs(prob_ambas_marcam - 0.65)
     

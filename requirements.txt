@@ -4,3 +4,4 @@ plotly
 scipy
 lxml
 beautifulsoup4
+understat

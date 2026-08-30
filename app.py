@@ -9,7 +9,7 @@ st.markdown("# 📊 Analisador Universal de Partidas")
 st.markdown("---")
 
 # URL da sua planilha do Google Sheets configurada com o seu ID correto 
-URL_CSV = "https://docs.google.com/spreadsheets/d/1eOwQmNTdR6PjIZTOAUaj_wAr42waGQCQU3S-DDu-PEw/export?format=csv"
+URL_CSV = "https://docs.google.com/spreadsheets/d/1eOwQmNTdR6PJIZTOAUaj_wAr42waGQCQU3S-DDu-PEw/export?format=csv"
 
 @st.cache_data(ttl=60) # Atualiza os dados a cada 60 segundos se você mudar a planilha
 def carregar_dados():

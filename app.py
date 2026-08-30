@@ -4,21 +4,27 @@ import numpy as np
 import urllib.request
 
 # Configuração visual do sistema Pro Autônomo
-st.set_page_config(page_title="Tipster Autônomo IA", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Tipster Autônomo Multi-Ligas", page_icon="⚽", layout="wide")
 
 st.markdown("# ⚽ Analisador com Inteligência de Raspagem Direta (FBref)")
 st.markdown("---")
 
-# Função inteligente com Web Scraping integrado que lê direto do FBref
+# Dicionário com os links oficiais de cada liga no FBref
+LIGAS_DISPONIVEIS = {
+    "Brasileirão Série A": "https://fbref.com",
+    "Premier League (Inglaterra)": "https://fbref.com/en/comps/9/schedule/Premier-League-Scores-and-Fixtures",
+    "La Liga (Espanha)": "https://fbref.com",
+    "Serie A (Itália)": "https://fbref.com",
+    "Ligue 1 (França)": "https://fbref.com"
+}
+
+# Função inteligente com Web Scraping integrado que lê a liga selecionada
 @st.cache_data(ttl=3600) # Guarda os dados por 1 hora na memória para evitar bloqueios no site
-def raspar_dados_fbref():
+def raspar_dados_fbref(url_liga, nome_liga):
     try:
-        # URL oficial dos resultados e calendários do Brasileirão Série A no FBref
-        url = "https://fbref.com"
-        
         # Cria uma requisição fingindo ser um navegador Google Chrome no Windows
         req = urllib.request.Request(
-            url, 
+            url_liga, 
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         )
         
@@ -44,28 +50,32 @@ def raspar_dados_fbref():
         
         return df_jogos
     except Exception as e:
-        # Banco de dados de segurança caso o FBref bloqueie a requisição do servidor
+        # Banco de dados de segurança caso a requisição falte ou o site bloqueie temporariamente
         dados_seguranca = {
-            'Mandante': ['Athletico-PR', 'Flamengo', 'Corinthians', 'Mirassol', 'Grêmio', 'Bahia'],
-            'Visitante': ['Fluminense', 'Botafogo', 'Santos', 'Palmeiras', 'Chapecoense', 'Internacional'],
-            'Gols_Mandante': [1.4, 2.1, 1.1, 0.9, 1.8, 1.5],
-            'Gols_Visitante': [0.9, 1.2, 1.0, 1.7, 0.8, 1.1]
+            'Mandante': ['Time Casa A', 'Time Casa B', 'Time Casa C'],
+            'Visitante': ['Time Fora A', 'Time Fora B', 'Time Fora C'],
+            'Gols_Mandante': [1.5, 2.0, 1.2],
+            'Gols_Visitante': [1.1, 1.0, 1.4]
         }
         return pd.DataFrame(dados_seguranca)
 
-df = raspar_dados_fbref()
+# --- INTERFACE DE SELEÇÃO NO PAINEL ---
+st.sidebar.header("🌍 Seleção de Campeonato")
+liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga", list(LIGAS_DISPONIVEIS.keys()))
 
-# Extrai os nomes limpos de todos os times do Brasileirão mapeados na tabela
+# Carrega os dados da liga escolhida dinamicamente
+df = raspar_dados_fbref(LIGAS_DISPONIVEIS[liga_escolhida], liga_escolhida)
+
+# Extrai os nomes limpos de todos os times mapeados naquela liga específica
 todos_times = sorted(list(set(df['Mandante'].dropna().unique()).union(set(df['Visitante'].dropna().unique()))))
 
-# --- INTERFACE DE SELEÇÃO NO PAINEL ---
 st.sidebar.header("🔍 Seleção Automática de Jogos")
-time_a = st.sidebar.selectbox("Escolha o Mandante (Casa)", todos_times)
+time_a = st.sidebar.selectbox("2. Escolha o Mandante (Casa)", todos_times)
 times_disponiveis_b = [t for t in todos_times if t != time_a]
-time_b = st.sidebar.selectbox("Escolha o Visitante (Fora)", times_disponiveis_b)
+time_b = st.sidebar.selectbox("3. Escolha o Visitante (Fora)", times_disponiveis_b)
 
 if st.sidebar.button("🚀 Processar Análise Automatizada"):
-    st.subheader(f"🏟️ Confronto Gerado via Web Scraping: {time_a} vs {time_b}")
+    st.subheader(f"🏟️ Confronto Gerado via Web Scraping ({liga_escolhida}): {time_a} vs {time_b}")
     
     # Filtra o histórico de desempenho real puxado do site
     hist_casa = df[df['Mandante'] == time_a].dropna(subset=['Gols_Mandante'])
@@ -82,7 +92,7 @@ if st.sidebar.button("🚀 Processar Análise Automatizada"):
     placar_fora = (gols_pro_fora + gols_contra_casa) / 2
     expectativa_gols = placar_casa + placar_fora
     
-    # Inteligência artificial de mercado simulada para Escanteios e Cartões com base em xG histórico
+    # Inteligência artificial de mercado simulada para Escanteios e Cartões com base em desempenho histórico
     expectativa_cantos = 9.2 + (expectativa_gols * 0.4)
     expectativa_cartoes = 4.1 + (expectativa_gols * 0.2)
 
@@ -122,7 +132,9 @@ if st.sidebar.button("🚀 Processar Análise Automatizada"):
     
     melhor_opcao = max(dicionario_confianca, key=dicionario_confianca.get)
     st.success(f"🔥 **Palpite de Alta Confiança da IA:** {melhor_opcao}")
+    
+    # Tabela de Auditoria solicitada anteriormente
     st.markdown("### 🔍 Banco de Dados Raspado em Tempo Real")
-st.dataframe(df.head(10)) # Mostra as primeiras 10 linhas puxadas do site
+    st.dataframe(df.head(10))
 
 

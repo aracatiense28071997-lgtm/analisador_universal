@@ -56,7 +56,7 @@ def raspar_dados_fbref(url_liga, nome_liga):
         df_jogos = df_jogos.rename(columns={'Home': 'Mandante', 'Away': 'Visitante', 'Score': 'Placar'})
         df_jogos = df_jogos[df_jogos['Mandante'] != 'Home']
         
-        df_jogos['Placar_Limpo'] = df_jogos['Placar'].str.split(' ').str
+        df_jogos['Placar_Limpo'] = df_jogos['Placar'].str.split(' ').str[0]
         df_jogos[['Gols_Mandante', 'Gols_Visitante']] = df_jogos['Placar_Limpo'].str.split('–', expand=True)
         df_jogos['Gols_Mandante'] = pd.to_numeric(df_jogos['Gols_Mandante'], errors='coerce')
         df_jogos['Gols_Visitante'] = pd.to_numeric(df_jogos['Gols_Visitante'], errors='coerce')
@@ -64,25 +64,8 @@ def raspar_dados_fbref(url_liga, nome_liga):
         return df_jogos
         
     except Exception as e:
-        if "Premier" in nome_liga:
-            m = ['Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Tottenham', 'Aston Villa', 'Leeds United', 'Brentford']
-            v = ['West Ham', 'Newcastle', 'Everton', 'Fulham', 'Brighton', 'Manchester Utd', 'Leeds United', 'Brentford']
-        elif "La Liga" in nome_liga:
-            m = ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Real Sociedad', 'Betis', 'Sevilla']
-            v = ['Girona', 'Athletic Club', 'Valencia', 'Villarreal', 'Osasuna', 'Getafe']
-        else:
-            m = ['Athletico-PR', 'Flamengo', 'Corinthians', 'Palmeiras', 'Grêmio', 'Bahia']
-            v = ['Fluminense', 'Botafogo', 'Santos', 'Cruzeiro', 'Vasco', 'Internacional']
-            
-        dados_seguranca = {
-            'Mandante': m * 5,
-            'Visitante': v * 5,
-            'Gols_Mandante': [1, 2, 0, 3, 1, 2, 1, 2] * 5 if "Premier" in nome_liga else [1, 2, 1, 2, 0, 1] * 5,
-            'Gols_Visitante': [1, 1, 2, 0, 2, 1, 1, 2] * 5 if "Premier" in nome_liga else [1, 0, 2, 1, 1, 1] * 5,
-            'Date': ['30/08/2026'] * len(m * 5),
-            'Placar': ['1–1'] * len(m * 5)
-        }
-        return pd.DataFrame(dados_seguranca)
+        st.error(f"Erro temporário de conexão com os servidores. Recarregue a página.")
+        return pd.DataFrame(columns=['Mandante', 'Visitante', 'Placar', 'Gols_Mandante', 'Gols_Visitante', 'Date'])
 
 @st.cache_data(ttl=1800) # Classificação pode durar 30 minutos em cache
 def raspar_classificacao(url_tabela):
@@ -115,13 +98,16 @@ liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga", list(LIGAS_DISPONIVEI
 
 df = raspar_dados_fbref(LIGAS_DISPONIVEIS[liga_escolhida], liga_escolhida)
 
-df['Mandante'] = df['Mandante'].astype(str).str.strip()
-df['Visitante'] = df['Visitante'].astype(str).str.strip()
+# Se o banco de dados vier vazio por bloqueio, cria uma lista mínima para a tela não travar
+if not df.empty:
+    df['Mandante'] = df['Mandante'].astype(str).str.strip()
+    df['Visitante'] = df['Visitante'].astype(str).str.strip()
+    lista_base = list(df['Mandante'].unique()) + list(df['Visitante'].unique())
+else:
+    lista_base = ['Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Leeds United', 'Brentford', 'Flamengo', 'Palmeiras', 'Fluminense', 'Botafogo']
 
 if "Premier" in liga_escolhida:
-    lista_base = list(df['Mandante'].unique()) + list(df['Visitante'].unique()) + ['Leeds United', 'Brentford']
-else:
-    lista_base = list(df['Mandante'].unique()) + list(df['Visitante'].unique())
+    lista_base = lista_base + ['Leeds United', 'Brentford']
 
 todos_times = sorted(list(set(lista_base)))
 todos_times = [t for t in todos_times if t and t != 'nan' and len(t) > 2 and t != 'Home']
@@ -144,8 +130,12 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     st.markdown("---")
     st.subheader(f"🏟️ Confronto Gerado via Web Scraping: {time_a} vs {time_b}")
     
-    hist_casa = df[(df['Mandante'] == time_a) & (df['Gols_Mandante'].notna())]
-    hist_fora = df[(df['Visitante'] == time_b) & (df['Gols_Visitante'].notna())]
+    if not df.empty:
+        hist_casa = df[(df['Mandante'] == time_a) & (df['Gols_Mandante'].notna())]
+        hist_fora = df[(df['Visitante'] == time_b) & (df['Gols_Visitante'].notna())]
+    else:
+        hist_casa = pd.DataFrame()
+        hist_fora = pd.DataFrame()
     
     if time_a == "Leeds United" and hist_casa.empty:
         gols_pro_casa, gols_contra_casa = 1.60, 1.20
@@ -204,6 +194,19 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     dicionario_confianca = {
         f"🏆 Resultado Final -> **{resultado_final}**": confianca_resultado,
         f"⚽ Mercado de Gols -> **{tip_gols}**": distancia_gols,
-
-
+        f"🤝 Mercado de Ambas Marcam -> **{tip_ambas}**": distancia_ambas
+    }
+    
+    melhor_opcao = max(dicionario_confianca, key=dicionario_confianca.get)
+    st.success(f"🔥 **Palpite de Alta Confiança da IA:** {melhor_opcao}")
+    
+    # --- HISTÓRICO ISOLADO DE CADA TIME ---
+    st.markdown("---")
+    col_h1, col_h2 = st.columns(2)
+    
+    with col_h1:
+        st.markdown(f"#### 📅 Últimos Jogos do Mandante: {time_a}")
+        if not df.empty:
+            ultimos_casa = df[(df['Mandante'] == time_a) | (df['Visitante'] == time_a)].dropna(subset=['Gols_Mandante']).tail(5)
+            if not ultimos_casa.empty:
 

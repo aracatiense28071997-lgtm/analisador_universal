@@ -11,7 +11,7 @@ st.markdown("---")
 
 # Links com estruturas altamente estáveis e limpas do FBref
 LIGAS_DISPONIVEIS = {
-    "Premier League (Inglaterra)": "https://fbref.com/en/comps/9/schedule/Premier-League-Scores-and-Fixtures",
+    "Premier League (Inglaterra)": "https://fbref.com",
     "Brasileirão Série A": "https://fbref.com",
     "La Liga (Espanha)": "https://fbref.com",
     "Serie A (Itália)": "https://fbref.com",
@@ -22,9 +22,9 @@ LIGAS_DISPONIVEIS = {
 LINKS_CLASSIFICACAO = {
     "Premier League (Inglaterra)": "https://fbref.com",
     "Brasileirão Série A": "https://fbref.com",
-    "La Liga (Espanha)": "https://fbref.com/en/comps/12/La-Liga-Stats",
+    "La Liga (Espanha)": "https://fbref.com",
     "Serie A (Itália)": "https://fbref.com",
-    "Ligue 1 (França)": "https://fbref.com/en/comps/13/Ligue-1-Stats"
+    "Ligue 1 (França)": "https://fbref.com"
 }
 
 @st.cache_data(ttl=600) # Atualiza a memória a cada 10 minutos para puxar novos resultados de hoje
@@ -77,10 +77,10 @@ def raspar_dados_fbref(url_liga, nome_liga):
         dados_seguranca = {
             'Mandante': m * 5,
             'Visitante': v * 5,
-            'Gols_Mandante': * 5,
-            'Gols_Visitante': * 5,
-            'Date': ['30/08/2026'] * len(m*5),
-            'Placar': ['1–1'] * len(m*5)
+            'Gols_Mandante': [1, 2, 0, 3, 1, 2, 1, 2] * 5 if "Premier" in nome_liga else [1, 2, 1, 2, 0, 1] * 5,
+            'Gols_Visitante': [1, 1, 2, 0, 2, 1, 1, 2] * 5 if "Premier" in nome_liga else [1, 0, 2, 1, 1, 1] * 5,
+            'Date': ['30/08/2026'] * len(m * 5),
+            'Placar': ['1–1'] * len(m * 5)
         }
         return pd.DataFrame(dados_seguranca)
 
@@ -93,10 +93,8 @@ def raspar_classificacao(url_tabela):
             html = response.read()
         tabelas = pd.read_html(html)
         
-        # Procura a tabela que possui os cabeçalhos tradicionais de classificação (Rk, Squad, Pts...)
         for t in tabelas:
             if 'Squad' in t.columns or 'Squad' in str(t.columns):
-                # Se as colunas forem multi-níveis, nivela para texto simples
                 if isinstance(t.columns, pd.MultiIndex):
                     t.columns = t.columns.get_level_values(-1)
                 
@@ -120,7 +118,6 @@ df = raspar_dados_fbref(LIGAS_DISPONIVEIS[liga_escolhida], liga_escolhida)
 df['Mandante'] = df['Mandante'].astype(str).str.strip()
 df['Visitante'] = df['Visitante'].astype(str).str.strip()
 
-# Garante Leeds e Brentford de forma nativa para testes limpos
 if "Premier" in liga_escolhida:
     lista_base = list(df['Mandante'].unique()) + list(df['Visitante'].unique()) + ['Leeds United', 'Brentford']
 else:
@@ -147,11 +144,9 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     st.markdown("---")
     st.subheader(f"🏟️ Confronto Gerado via Web Scraping: {time_a} vs {time_b}")
     
-    # Filtra o histórico de jogos reais onde os gols realmente aconteceram
     hist_casa = df[(df['Mandante'] == time_a) & (df['Gols_Mandante'].notna())]
     hist_fora = df[(df['Visitante'] == time_b) & (df['Gols_Visitante'].notna())]
     
-    # Injeção de contingência para Leeds e Brentford se a raspagem da tabela falhar no início da rodada
     if time_a == "Leeds United" and hist_casa.empty:
         gols_pro_casa, gols_contra_casa = 1.60, 1.20
     else:
@@ -164,7 +159,6 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
         gols_pro_fora = hist_fora['Gols_Visitante'].mean() if not hist_fora.empty else 1.2
         gols_contra_fora = hist_fora['Gols_Mandante'].mean() if not hist_fora.empty else 1.4
     
-    # Cruzamento estatístico para projetar o placar final esperado
     placar_casa = (gols_pro_casa + gols_contra_fora) / 2
     placar_fora = (gols_pro_fora + gols_contra_casa) / 2
     
@@ -202,5 +196,14 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
 
     # --- ELEIÇÃO DA MELHOR ENTRADA ---
     st.markdown("---")
+    st.markdown("## 👑 A MELHOR ENTRADA PARA ESTA PARTIDA")
+    
+    distancia_gols = abs(expectativa_gols - 2.5)
+    distancia_ambas = abs(prob_ambas_marcam - 0.62)
+    
+    dicionario_confianca = {
+        f"🏆 Resultado Final -> **{resultado_final}**": confianca_resultado,
+        f"⚽ Mercado de Gols -> **{tip_gols}**": distancia_gols,
+
 
 

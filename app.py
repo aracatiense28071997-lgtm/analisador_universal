@@ -22,7 +22,7 @@ LIGAS_UNDERSTAT = {
 @st.cache_data(ttl=600)
 def buscar_dados_understat(liga_nome):
     try:
-                url = f"https://understat.com{LIGAS_UNDERSTAT[liga_nome]}"
+        url = f"https://understat.com{LIGAS_UNDERSTAT[liga_nome]}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         
         response = requests.get(url, headers=headers, timeout=15)
@@ -32,7 +32,7 @@ def buscar_dados_understat(liga_nome):
         # Procura o bloco JSON contendo as estatísticas completas de todas as equipes
         dados_times = None
         for s in scripts:
-            if 'teamsData' in s.string if s.string else '':
+            if s.string and 'teamsData' in s.string:
                 match = re.search(r"teamsData\s*=\s*JSON\.parse\('([^']+)'\)", s.string)
                 if match:
                     # Decodifica o JSON criptografado na página do Understat
@@ -68,7 +68,7 @@ def buscar_dados_understat(liga_nome):
         return pd.DataFrame()
 
 # --- INTERFACE DE SELEÇÃO ---
-st.sidebar.header("🌍 Seleção de Campeonato")
+st.sidebar.header("🔍 Seleção de Campeonato")
 liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga Europeia", list(LIGAS_UNDERSTAT.keys()))
 
 df = buscar_dados_understat(liga_escolhida)
@@ -146,6 +146,5 @@ else:
             st.metric("Total de Chutes Previstos na Partida", f"{stats_a['Chutes_Realizados'] + stats_b['Chutes_Realizados']:.1f}")
             
         st.success(f"🔥 **Recomendação Baseada em Volume de Jogo e xG:** {tip_gols} (Projeção de {total_gols_esperado:.2f} gols com alto volume de finalizações)")
-
 
 

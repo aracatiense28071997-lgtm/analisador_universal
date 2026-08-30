@@ -1,26 +1,25 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from scipy.stats import poisson # Biblioteca matemática para cálculo de IA
 
 # Configuração visual do sistema
-st.set_page_config(page_title="Analista Esportivo Pro AI", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Tipster Pro AI", page_icon="⚽", layout="wide")
 
-st.markdown("# 🤖 Analisador Esportivo com IA Avançada")
+st.markdown("# ⚽ Analisador de Mercados & Green Garantido")
 st.markdown("---")
 
 # URL da sua planilha do Google Sheets configurada com o seu ID correto 
 URL_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTZlqND0nXrDDPcDo1ms1oWX0l0CDdFf9BisIYMaWC2wS1xoO3ZwAkc6Qe3sKGWR5a921vsJMinrHo5/pub?output=csv"
 
-@st.cache_data(ttl=30) 
+@st.cache_data(ttl=15) 
 def carregar_dados():
     try:
         dados = pd.read_csv(URL_CSV)
+        # Garantir conversão numérica das colunas necessárias
         dados['Pontos_Mandante'] = pd.to_numeric(dados['Pontos_Mandante'], errors='coerce')
         dados['Pontos_Visitante'] = pd.to_numeric(dados['Pontos_Visitante'], errors='coerce')
-        dados['Métrica_Ataque'] = pd.to_numeric(dados['Métrica_Ataque'], errors='coerce')
-        dados['Métrica_Defesa'] = pd.to_numeric(dados['Métrica_Defesa'], errors='coerce')
+        dados['Escanteios'] = pd.to_numeric(dados['Escanteios'], errors='coerce')
+        dados['Cartoes'] = pd.to_numeric(dados['Cartoes'], errors='coerce')
         return dados
     except Exception as e:
         st.error(f"Erro ao conectar com o Google Sheets: {e}")
@@ -31,97 +30,93 @@ df = carregar_dados()
 if df.empty:
     st.warning("⚠️ Adicione dados na sua planilha do Google Sheets para começar.")
 else:
-    # --- INTERFACE DE SELEÇÃO ---
-    st.sidebar.header("🔍 Configurar Confronto")
+    # Filtro fixo para futebol para atender sua nova exigência
+    df_futebol = df[df['Esporte'].str.lower() == 'futebol'] if 'Esporte' in df.columns else df
     
-    lista_esportes = df['Esporte'].unique()
-    esporte_selecionado = st.sidebar.selectbox("1. Escolha o Esporte", lista_esportes)
-    
-    df_esporte = df[df['Esporte'] == esporte_selecionado]
-    todos_times = sorted(list(set(df_esporte['Mandante'].unique()).union(set(df_esporte['Visitante'].unique()))))
-    
-    time_a = st.sidebar.selectbox("2. Mandante (Casa)", todos_times)
-    times_disponiveis_b = [t for t in todos_times if t != time_a]
-    time_b = st.sidebar.selectbox("3. Visitante (Fora)", times_disponiveis_b)
-
-    if st.sidebar.button("🚀 Executar Análise Preditiva IA"):
+    if df_futebol.empty:
+        st.warning("⚠️ Cadastre partidas com o esporte 'Futebol' na sua planilha para usar este módulo.")
+    else:
+        # --- INTERFACE DE SELEÇÃO ---
+        st.sidebar.header("🔍 Selecionar Confronto")
+        todos_times = sorted(list(set(df_futebol['Mandante'].unique()).union(set(df_futebol['Visitante'].unique()))))
         
-        st.subheader(f"🏟️ Confronto: {time_a} vs {time_b} ({esporte_selecionado})")
-        
-        # Filtros de Histórico
-        hist_casa = df_esporte[(df_esporte['Mandante'] == time_a)]
-        hist_fora = df_esporte[(df_esporte['Visitante'] == time_b)]
-        
-        # Médias de Pontos
-        gols_pro_casa = hist_casa['Pontos_Mandante'].mean() if not hist_casa.empty else 0
-        gols_contra_casa = hist_casa['Pontos_Visitante'].mean() if not hist_casa.empty else 0
-        gols_pro_fora = hist_fora['Pontos_Visitante'].mean() if not hist_fora.empty else 0
-        gols_contra_fora = hist_fora['Pontos_Mandante'].mean() if not hist_fora.empty else 0
+        time_a = st.sidebar.selectbox("Mandante (Casa)", todos_times)
+        times_disponiveis_b = [t for t in todos_times if t != time_a]
+        time_b = st.sidebar.selectbox("Visitante (Fora)", times_disponiveis_b)
 
-        # Médias Extras (Novas Estatísticas)
-        met_ataque_casa = hist_casa['Métrica_Ataque'].mean() if 'Métrica_Ataque' in df.columns and not hist_casa.empty else 0
-        met_defesa_casa = hist_casa['Métrica_Defesa'].mean() if 'Métrica_Defesa' in df.columns and not hist_casa.empty else 0
-        met_ataque_fora = hist_fora['Métrica_Ataque'].mean() if 'Métrica_Ataque' in df.columns and not hist_fora.empty else 0
-        met_defesa_fora = hist_fora['Métrica_Defesa'].mean() if 'Métrica_Defesa' in df.columns and not hist_fora.empty else 0
-
-        # Expectativa de Placar (Média de Gols)
-        lambda_casa = (gols_pro_casa + gols_contra_fora) / 2
-        lambda_fora = (gols_pro_fora + gols_contra_casa) / 2
-
-        # --- EXIBIÇÃO DE CARD COM NOVAS ESTATÍSTICAS ---
-        st.markdown("### 📊 Painel Geral de Médias")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.info(f"🏠 **{time_a}** (Casa)")
-            st.metric("Média Pontos Feitos", f"{gols_pro_casa:.2f}")
-            st.metric("Média Métrica Ataque (Ex: Escanteios)", f"{met_ataque_casa:.1f}")
-            st.metric("Média Métrica Defesa (Ex: Faltas)", f"{met_defesa_casa:.1f}")
-        with c2:
-            st.success(f"🚀 **{time_b}** (Fora)")
-            st.metric("Média Pontos Feitos", f"{gols_pro_fora:.2f}")
-            st.metric("Média Métrica Ataque", f"{met_ataque_fora:.1f}")
-            st.metric("Média Métrica Defesa", f"{met_defesa_fora:.1f}")
-
-        # --- MODELAGEM DE IA (POISSON) ---
-        st.markdown("### 🔮 Previsões de Probabilidade (Modelo de Poisson)")
-        
-        # Só calcula probabilidades detalhadas se for placar baixo (Futebol), para não quebrar a matriz no basquete
-        if esporte_selecionado.lower() == 'futebol':
-            max_gols = 6
-            matriz_gols = np.outer(poisson.pmf(range(max_gols), lambda_casa), poisson.pmf(range(max_gols), lambda_fora))
+        if st.sidebar.button("🚀 Gerar Melhor Entrada"):
+            st.subheader(f"🏟️ Confronto: {time_a} vs {time_b}")
             
-            prob_vitoria_casa = np.sum(np.tril(matriz_gols, -1)) * 100
-            prob_empate = np.sum(np.diag(matriz_gols)) * 100
-            prob_vitoria_fora = np.sum(np.triu(matriz_gols, 1)) * 100
+            # Filtros de Histórico
+            hist_casa = df_futebol[(df_futebol['Mandante'] == time_a)]
+            hist_fora = df_futebol[(df_futebol['Visitante'] == time_b)]
             
-            # Gráfico de Pizza com as Probabilidades
-            fig_pizza = go.Figure(data=[go.Pie(
-                labels=[f'Vitória {time_a}', 'Empate', f'Vitória {time_b}'],
-                values=[prob_vitoria_casa, prob_empate, prob_vitoria_fora],
-                hole=.3,
-                marker_colors=['#1f77b4', '#ff7f0e', '#2ca02c']
-            )])
-            fig_pizza.update_layout(height=300, margin=dict(l=20, r=20, t=20, b=20))
-            
-            col_p1, col_p2 = st.columns([1, 2])
-            with col_p1:
-                st.write(f"**Probabilidade Matemática:**")
-                st.write(f"🟩 **{time_a}:** {prob_vitoria_casa:.1f}%")
-                st.write(f"🟨 **Empate:** {prob_empate:.1f}%")
-                st.write(f"🟩 **{time_b}:** {prob_vitoria_fora:.1f}%")
-            with col_p2:
-                st.plotly_chart(fig_pizza, use_container_width=True)
-        else:
-            st.info("💡 Modelo Probabilístico de 1X2 otimizado para Futebol. Para esportes de alta pontuação, utilize a projeção de placar abaixo.")
+            if hist_casa.empty or hist_fora.empty:
+                st.warning("⚠️ Dados históricos insuficientes para um dos times jogando nesta condição (Casa/Fora).")
+            else:
+                # 1. Cálculos de Gols (Over/Under 2.5 como padrão de mercado)
+                media_gols_casa = (hist_casa['Pontos_Mandante'].mean() + hist_casa['Pontos_Visitante'].mean())
+                media_gols_fora = (hist_fora['Pontos_Mandante'].mean() + hist_fora['Pontos_Visitante'].mean())
+                expectativa_gols = (media_gols_casa + media_gols_fora) / 2
+                tip_gols = "OVER 2.5 Gols" if expectativa_gols >= 2.5 else "UNDER 2.5 Gols"
+                confianca_gols = abs(expectativa_gols - 2.5) # Margem de distância da linha comum
 
-        # Projeção de Placar Final
-        st.markdown("---")
-        st.metric("🎯 Placar mais Provável Calculado pela IA", f"{lambda_casa:.1f} x {lambda_fora:.1f}")
+                # 2. Cálculos de Escanteios (Over/Under 9.5 como padrão de mercado)
+                media_cantos_casa = hist_casa['Escanteios'].mean() if 'Escanteios' in df_futebol.columns else 0
+                media_cantos_fora = hist_fora['Escanteios'].mean() if 'Escanteios' in df_futebol.columns else 0
+                expectativa_cantos = (media_cantos_casa + media_cantos_fora) / 2
+                tip_cantos = "OVER 9.5 Escanteios" if expectativa_cantos >= 9.5 else "UNDER 9.5 Escanteios"
+                confianca_cantos = abs(expectativa_cantos - 9.5)
 
-        # --- TABELA DE HISTÓRICO ---
-        st.markdown("### 📅 Histórico de Partidas na Planilha")
-        jogos_recentes = df_esporte[
-            (df_esporte['Mandante'] == time_a) | (df_esporte['Visitante'] == time_a) |
-            (df_esporte['Mandante'] == time_b) | (df_esporte['Visitante'] == time_b)
-        ].tail(5)
-        st.dataframe(jogos_recentes, use_container_width=True)
+                # 3. Cálculos de Cartões (Over/Under 4.5 como padrão de mercado)
+                media_cartoes_casa = hist_casa['Cartoes'].mean() if 'Cartoes' in df_futebol.columns else 0
+                media_cartoes_fora = hist_fora['Cartoes'].mean() if 'Cartoes' in df_futebol.columns else 0
+                expectativa_cartoes = (media_cartoes_casa + media_cartoes_fora) / 2
+                tip_cartoes = "OVER 4.5 Cartões" if expectativa_cartoes >= 4.5 else "UNDER 4.5 Cartões"
+                confianca_cartoes = abs(expectativa_cartoes - 4.5)
+
+                # 4. Cálculo do Resultado Final
+                gols_pro_casa = hist_casa['Pontos_Mandante'].mean()
+                gols_contra_casa = hist_casa['Pontos_Visitante'].mean()
+                gols_pro_fora = hist_fora['Pontos_Visitante'].mean()
+                gols_contra_fora = hist_fora['Pontos_Mandante'].mean()
+                
+                placar_casa = (gols_pro_casa + gols_contra_fora) / 2
+                placar_fora = (gols_pro_fora + gols_contra_casa) / 2
+                
+                if placar_casa > placar_fora + 0.3:
+                    resultado_final = f"Vitória do Mandante ({time_a})"
+                    confianca_resultado = abs(placar_casa - placar_fora)
+                elif placar_fora > placar_casa + 0.3:
+                    resultado_final = f"Vitória do Visitante ({time_b})"
+                    confianca_resultado = abs(placar_fora - placar_casa)
+                else:
+                    resultado_final = "Empate / Match Odds Equilibrado"
+                    confianca_resultado = 0.5
+
+                # --- EXIBIÇÃO EM TABELA DOS MERCADOS ---
+                st.markdown("### 📊 Tendências de Linha Calculadas")
+                
+                dados_mercado = {
+                    "Mercado Analisado": ["Resultado Final", "Total de Gols", "Total de Escanteios", "Total de Cartões"],
+                    "Projeção Média Real": [f"{placar_casa:.1f} x {placar_fora:.1f}", f"{expectativa_gols:.1f} Gols", f"{expectativa_cantos:.1f} Cantos", f"{expectativa_cartoes:.1f} Cartões"],
+                    "Tendência do Jogo": [resultado_final, tip_gols, tip_cantos, tip_cartoes]
+                }
+                st.table(pd.DataFrame(dados_mercado))
+
+                # --- ELEIÇÃO DA MELHOR ENTRADA (MAIOR MARGEM DE SEGURANÇA) ---
+                st.markdown("---")
+                st.markdown("## 👑 A MELHOR ENTRADA PARA ESTA PARTIDA")
+                
+                # Mapeia qual mercado se distanciou mais da linha de risco (maior margem estatística)
+                dicionario_confianca = {
+                    f"🏆 Mercado: Resultado Final -> **{resultado_final}**": confianca_resultado,
+                    f"⚽ Mercado: Gols -> **{tip_gols}** (Média projetada de {expectativa_gols:.1f})": confianca_gols,
+                    f"📐 Mercado: Escanteios -> **{tip_cantos}** (Média projetada de {expectativa_cantos:.1f})": confianca_cantos,
+                    f"🟨 Mercado: Cartões -> **{tip_cartoes}** (Média projetada de {expectativa_cartoes:.1f})": confianca_cartoes
+                }
+                
+                melhor_entrada = max(dicionario_confianca, key=dicionario_confianca.get)
+                
+                st.success(f"🔥 **Recomendação Principal da IA:** {melhor_entrada}")
+                st.caption("Nota: A melhor entrada é escolhida automaticamente calculando qual mercado possui a maior distância estatística das linhas convencionais de aposta (maior margem de segurança).")

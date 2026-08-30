@@ -9,7 +9,7 @@ st.set_page_config(page_title="Tipster Autônomo Multi-Ligas", page_icon="⚽", 
 st.markdown("# ⚽ Analisador com Inteligência de Raspagem Direta (FBref)")
 st.markdown("---")
 
-# Links com estruturas altamente estáveis e limpas
+# Links com estruturas altamente estáveis e limhas
 LIGAS_DISPONIVEIS = {
     "Brasileirão Série A": "https://fbref.com",
     "Premier League (Inglaterra)": "https://fbref.com",
@@ -83,13 +83,13 @@ def raspar_dados_fbref(url_liga, nome_liga):
         dados_seguranca = {
             'Mandante': m * 2,
             'Visitante': v * 2,
-            'Gols_Mandante':,
-            'Gols_Visitante': [1, 1, 2, 1, 0, 1, 2, 0, 1, 1, 2, 0]
+            'Gols_Mandante': [2, 1, 3, 0, 1, 2] * 2,
+            'Gols_Visitante': [1, 1, 0, 2, 1, 1] * 2
         }
         return pd.DataFrame(dados_seguranca)
 
 # --- INTERFACE DE SELEÇÃO NO PAINEL ---
-st.sidebar.header("🌍 Seleção de Campeonato")
+st.sidebar.header("🌍amp; Seleção de Campeonato")
 liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga", list(LIGAS_DISPONIVEIS.keys()))
 
 df = raspar_dados_fbref(LIGAS_DISPONIVEIS[liga_escolhida], liga_escolhida)

@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import asyncio
-from understat import Understat
-import aiohttp
+import urllib.request
 
 # Configuração visual do sistema Pro de Estatísticas Detalhadas
 st.set_page_config(page_title="Analisador Estatístico Pro", page_icon="📊", layout="wide")
@@ -11,112 +9,136 @@ st.set_page_config(page_title="Analisador Estatístico Pro", page_icon="📊", l
 st.markdown("# 📊 Analisador de Performance e Estatísticas Profundas")
 st.markdown("---")
 
-LIGAS_UNDERSTAT = {
-    "Premier League (Inglaterra)": "EPL",
-    "La Liga (Espanha)": "La_Liga",
-    "Serie A (Itália)": "Serie_A",
-    "Ligue 1 (França)": "Ligue_1"
+# URLs oficiais de estatísticas detalhadas de equipes do FBref (Cobre Gols, Chutes, Faltas e Cartões)
+LIGAS_ESTATISTICAS = {
+    "Premier League (Inglaterra)": "https://fbref.com",
+    "Brasileirão Série A": "https://fbref.com",
+    "La Liga (Espanha)": "https://fbref.com",
+    "Serie A (Itália)": "https://fbref.com",
+    "Ligue 1 (França)": "https://fbref.com"
 }
 
-# Nova função assíncrona utilizando o conector oficial do Understat
-async def obter_dados(liga_sigla):
-    async with aiohttp.ClientSession() as session:
-        understat = Understat(session)
-        # Busca os dados oficiais de todas as equipes na temporada atual
-        teams = await understat.get_teams(liga_sigla, 2026) # Configurado para o ano atual
-        
-        linhas = []
-        for team in teams:
-            nome_time = team['title']
-            # O conector oficial separa as estatísticas de ataque e defesa mastigadas
-            gols_feitos = int(team['history'][0]['g']) if team['history'] else 0
-            linhas.append({
-                'Equipe': nome_time,
-                'Gols_Feitos': gols_feitos,
-                'xG_Criado': float(team['stats']['seasons'][0]['xG']) if 'stats' in team else 0.0,
-                'xG_Concedido': float(team['stats']['seasons'][0]['xG_allowed']) if 'stats' in team else 0.0,
-                'Chutes_Realizados': float(team['stats']['seasons'][0]['shots']) if 'stats' in team else 0.0,
-                'Chutes_Concedidos': float(team['stats']['seasons'][0]['shots_allowed']) if 'stats' in team else 0.0,
-                'Passes_Terço_Final': float(team['stats']['seasons'][0]['deep']) if 'stats' in team else 0.0,
-                'Faltas_Cometidas': float(team['stats']['seasons'][0]['fouls']) if 'stats' in team else 0.0
-            })
-        return pd.DataFrame(linhas)
-
 @st.cache_data(ttl=600)
-def buscar_dados_understat(liga_nome):
+def buscar_estatisticas_fbref(url_liga):
     try:
-        # Roda o conector oficial dentro do ambiente síncrono do Streamlit
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        df_resultado = loop.run_until_complete(obter_dados(LIGAS_UNDERSTAT[liga_nome]))
-        return df_resultado
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+        
+        req = urllib.request.Request(url_liga, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            html = response.read()
+            
+        tabelas = pd.read_html(html)
+        
+        # Procura a tabela de estatísticas padrão das equipes (Squad Regular Season Stats)
+        df_stats = pd.DataFrame()
+        for t in tabelas:
+            if isinstance(t.columns, pd.MultiIndex):
+                t.columns = t.columns.get_level_values(-1)
+            if 'Squad' in t.columns and 'MP' in t.columns and 'Gls' in t.columns:
+                df_stats = t
+                break
+                
+        if df_stats.empty:
+            raise ValueError("Tabela de estatísticas não encontrada.")
+            
+        # Filtra e organiza apenas as métricas de performance reais por jogo
+        df_stats = df_stats.dropna(subset=['Squad'])
+        df_stats = df_stats[~df_stats['Squad'].str.contains('vs Opponent|Total')]
+        
+        # Tratamento numérico seguro das colunas do FBref
+        df_stats['MP'] = pd.to_numeric(df_stats['MP'], errors='coerce').fillna(1)
+        df_stats['Gls_Media'] = pd.to_numeric(df_stats['Gls'], errors='coerce') / df_stats['MP']
+        df_stats['xG_Media'] = pd.to_numeric(df_stats['xG'], errors='coerce') / df_stats['MP']
+        df_stats['Sh_Media'] = pd.to_numeric(df_stats['Sh'], errors='coerce') / df_stats['MP']
+        df_stats['CrdY_Media'] = pd.to_numeric(df_stats['CrdY'], errors='coerce') / df_stats['MP']
+        df_stats['Fls_Media'] = pd.to_numeric(df_stats['Fls'], errors='coerce', default=12.5) / df_stats['MP']
+        
+        return df_stats[['Squad', 'MP', 'Gls_Media', 'xG_Media', 'Sh_Media', 'CrdY_Media', 'Fls_Media']]
     except Exception as e:
-        st.error(f"Erro ao conectar com a base oficial: {e}")
+        st.error(f"Erro ao conectar com a base estatística: {e}")
         return pd.DataFrame()
 
 # --- INTERFACE DE SELEÇÃO ---
 st.sidebar.header("🔍 Seleção de Campeonato")
-liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga Europeia", list(LIGAS_UNDERSTAT.keys()))
+liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga", list(LIGAS_ESTATISTICAS.keys()))
 
-df = buscar_dados_understat(liga_escolhida)
+df = buscar_estatisticas_fbref(LIGAS_ESTATISTICAS[liga_escolhida])
 
 if df.empty:
-    st.warning("Aguardando resposta do servidor oficial de estatísticas...")
+    st.warning("Tentando reestabelecer conexão com o servidor de dados esportivos...")
 else:
-    todos_times = sorted(df['Equipe'].unique())
+    # Limpa nomes de equipes
+    df['Squad'] = df['Squad'].astype(str).str.strip()
+    todos_times = sorted(df['Squad'].unique())
     
     st.sidebar.header("🔍 Seleção Automática de Jogos")
     time_a = st.sidebar.selectbox("2. Escolha o Mandante (Casa)", todos_times)
     times_disponiveis_b = [t for t in todos_times if t != time_a]
     time_b = st.sidebar.selectbox("3. Escolha o Visitante (Fora)", times_disponiveis_b)
 
-    # --- ABA PRINCIPAL: CLASSIFICAÇÃO POR DESEMPENHO TÉCNICO ---
-    st.markdown(f"### 🏆 Classificação Técnica de Performance: {liga_escolhida}")
-    tabela_resumo = df.set_index('Equipe').sort_values(by='xG_Criado', ascending=False)
-    st.dataframe(tabela_resumo, use_container_width=True)
+    # --- ABA PRINCIPAL: TABELA GERAL DE PERFORMANCE TÉCNICA ---
+    st.markdown(f"### 🏆 Painel de Médias de Performance por Jogo: {liga_escolhida}")
+    tabela_exibicao = df.rename(columns={
+        'Squad': 'Equipe', 'MP': 'Partidas', 'Gls_Media': 'Média Gols',
+        'xG_Media': 'Média xG (Criado)', 'Sh_Media': 'Média Chutes',
+        'CrdY_Media': 'Média Cartões', 'Fls_Media': 'Média Faltas'
+    }).set_index('Equipe')
+    
+    st.dataframe(tabela_exibicao.style.format(precision=2), use_container_width=True)
 
     if st.sidebar.button("🚀 Processar Análise Profunda"):
         st.markdown("---")
         st.subheader(f"🏟️ Estatísticas Avançadas Comparativas: {time_a} vs {time_b}")
         
-        stats_a = df[df['Equipe'] == time_a].iloc[0]
-        stats_b = df[df['Equipe'] == time_b].iloc[0]
+        stats_a = df[df['Squad'] == time_a].iloc[0]
+        stats_b = df[df['Squad'] == time_b].iloc[0]
         
+        # --- TABELA DE MÉDRICAS COMPARATIVAS ESTILO SOFASCORE ---
         dados_comparativos = {
-            "Métrica de Desempenho (Acumulado Temporada)": [
+            "Métrica de Desempenho (Média por Jogo)": [
+                "Média de Gols Marcados", 
                 "Expected Goals - Gols Esperados (xG)", 
                 "Total de Chutes Realizados", 
-                "Passes no Terço Final do Campo",
-                "Faltas Cometidas"
+                "Média de Faltas Cometidas",
+                "Média de Cartões Amarelos"
             ],
             time_a: [
-                f"{stats_a['xG_Criado']:.2f}", 
-                f"{stats_a['Chutes_Realizados']:.0f}", 
-                f"{stats_a['Passes_Terço_Final']:.0f}",
-                f"{stats_a['Faltas_Cometidas']:.0f}"
+                f"{stats_a['Gls_Media']:.2f}", 
+                f"{stats_a['xG_Media']:.2f}", 
+                f"{stats_a['Sh_Media']:.1f}", 
+                f"{stats_a['Fls_Media']:.1f}",
+                f"{stats_a['CrdY_Media']:.1f}"
             ],
             time_b: [
-                f"{stats_b['xG_Criado']:.2f}", 
-                f"{stats_b['Chutes_Realizados']:.0f}", 
-                f"{stats_b['Passes_Terço_Final']:.0f}",
-                f"{stats_b['Faltas_Cometidas']:.0f}"
+                f"{stats_b['Gls_Media']:.2f}", 
+                f"{stats_b['xG_Media']:.2f}", 
+                f"{stats_b['Sh_Media']:.1f}", 
+                f"{stats_b['Fls_Media']:.1f}",
+                f"{stats_b['CrdY_Media']:.1f}"
             ]
         }
         st.table(pd.DataFrame(dados_comparativos))
         
+        # --- SISTEMA DE PREVISÃO REORGANIZADO ---
         st.markdown("### 🎯 O Veredito Estatístico do Confronto")
         
-        expectativa_gols_a = (stats_a['xG_Criado'] + stats_b['xG_Concedido']) / 38
-        expectativa_gols_b = (stats_b['xG_Criado'] + stats_a['xG_Concedido']) / 38
-        total_gols_esperado = expectativa_gols_a + expectativa_gols_b
+        total_gols_esperado = stats_a['Gls_Media'] + stats_b['Gls_Media']
+        total_chutes_esperado = stats_a['Sh_Media'] + stats_b['Sh_Media']
+        total_cartoes_esperado = stats_a['CrdY_Media'] + stats_b['CrdY_Media']
         
-        tip_gols = "OVER 2.5 Gols" if total_gols_esperado >= 2.5 else "UNDER 2.5 Gols"
+        tip_gols = "OVER 2.5 Gols" if total_gols_esperado >= 2.45 else "UNDER 2.5 Gols"
+        tip_cartoes = "OVER 3.5 Cartões" if total_cartoes_esperado >= 3.5 else "UNDER 3.5 Cartões"
         
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("Projeção de Placar para Hoje (Base xG)", f"{expectativa_gols_a:.1f} x {expectativa_gols_b:.1f}")
+            st.metric("Total de Gols Esperados", f"{total_gols_esperado:.2f}")
         with c2:
-            st.metric("Média de Chutes das Equipes (Por Jogo)", f"{(stats_a['Chutes_Realizados'] + stats_b['Chutes_Realizados'])/38:.1f}")
+            st.metric("Total de Chutes Previstos", f"{total_chutes_esperado:.1f}")
+        with c3:
+            st.metric("Total de Cartões Estimados", f"{total_cartoes_esperado:.1f}")
             
-        st.success(f"🔥 **Recomendação Baseada em Volume de Jogo Real:** {tip_gols}")
+        st.success(f"🔥 **Recomendação Principal da IA:** {tip_gols} | **Tendência Secundária:** {tip_cartoes}")
 

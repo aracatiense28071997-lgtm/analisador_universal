@@ -122,4 +122,7 @@ if st.sidebar.button("🚀 Processar Análise Automatizada"):
     
     melhor_opcao = max(dicionario_confianca, key=dicionario_confianca.get)
     st.success(f"🔥 **Palpite de Alta Confiança da IA:** {melhor_opcao}")
+    st.markdown("### 🔍 Banco de Dados Raspado em Tempo Real")
+st.dataframe(df.head(10)) # Mostra as primeiras 10 linhas puxadas do site
+
 

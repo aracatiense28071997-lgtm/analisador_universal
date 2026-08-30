@@ -73,8 +73,8 @@ def raspar_dados_fbref(url_liga, nome_liga):
         dados_seguranca = {
             'Mandante': m * 5,
             'Visitante': v * 5,
-            'Gols_Mandante': [2, 1, 0, 3, 1] * 5,
-            'Gols_Visitante': [1, 1, 1, 0, 2] * 5
+            'Gols_Mandante': [2, 1, 0, 3, 1, 2] * 5,
+            'Gols_Visitante': [1, 1, 1, 2, 0, 1] * 5
         }
         return pd.DataFrame(dados_seguranca)
 
@@ -117,7 +117,7 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     # Verifica a porcentagem real de jogos em que o Mandante fez gols em casa
     jogos_marcou_casa = len(hist_casa[hist_casa['Gols_Mandante'] > 0]) / len(hist_casa) if not hist_casa.empty else 0.75
     # Verifica a porcentagem real de jogos em que o Visitante fez gols fora
-    jogos_marcou_fora = len(hist_fora[hist_fora['Gols_Visitante'] > 0]) / len(hist_fora) if not hist_fora.empty else 0.70
+    jogos_marcou_fora = len(hist_fora[hist_fora['Gols_Visitante'] > 0]) / len(hist_fora) if not font_fora.empty if not hist_fora.empty else 0.70
     prob_ambas_marcam = (jogos_marcou_casa + jogos_marcou_fora) / 2
     tip_ambas = "AMBAS MARCAM: SIM" if prob_ambas_marcam >= 0.65 else "AMBAS MARCAM: NÃO"
 
@@ -161,6 +161,9 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
     
     # Exibe a tabela bruta de auditoria com os placares reais raspados
     st.markdown("### 🔍 Histórico Recente de Jogos na Tabela da Liga")
-    jogos_concluidos = df[df['Gols_Mandante'].notna()].head(10)
-    st.dataframe(jogos_concluidos[['Date', 'Mandante', 'Placar', 'Visitante']], use_container_width=True)
+    if 'Placar' in df.columns:
+        jogos_concluidos = df[df['Gols_Mandante'].notna()].head(10)
+        if not jogos_concluidos.empty:
+            st.dataframe(jogos_concluidos[['Mandante', 'Placar', 'Visitante']], use_container_width=True)
+
 

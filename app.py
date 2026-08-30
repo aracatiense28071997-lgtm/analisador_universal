@@ -1,216 +1,151 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import urllib.request
+import requests
+import json
+import re
+from bs4 import BeautifulSoup
 
-# Configuração visual do sistema Pro Autônomo e Realista
-st.set_page_config(page_title="Tipster Autônomo Pro Gols", page_icon="⚽", layout="wide")
+# Configuração visual do sistema Pro de Estatísticas Detalhadas
+st.set_page_config(page_title="Analisador Estatístico Pro", page_icon="📊", layout="wide")
 
-st.markdown("# ⚽ Analisador de Gols e Resultados 100% Reais (FBref)")
+st.markdown("# 📊 Analisador de Performance e Estatísticas Profundas")
 st.markdown("---")
 
-# Links com estruturas altamente estáveis e limpas do FBref
-LIGAS_DISPONIVEIS = {
-    "Premier League (Inglaterra)": "https://fbref.com",
-    "Brasileirão Série A": "https://fbref.com",
-    "La Liga (Espanha)": "https://fbref.com",
-    "Serie A (Itália)": "https://fbref.com",
-    "Ligue 1 (França)": "https://fbref.com"
+LIGAS_UNDERSTAT = {
+    "Premier League (Inglaterra)": "EPL",
+    "La Liga (Espanha)": "La_Liga",
+    "Serie A (Itália)": "Serie_A",
+    "Ligue 1 (França)": "Ligue_1"
 }
 
-# Mapeamento secundário para buscar as tabelas de classificação de cada liga de forma certeira
-LINKS_CLASSIFICACAO = {
-    "Premier League (Inglaterra)": "https://fbref.com",
-    "Brasileirão Série A": "https://fbref.com",
-    "La Liga (Espanha)": "https://fbref.com",
-    "Serie A (Itália)": "https://fbref.com",
-    "Ligue 1 (França)": "https://fbref.com"
-}
-
-@st.cache_data(ttl=600) # Atualiza a memória a cada 10 minutos para puxar novos resultados de hoje
-def raspar_dados_fbref(url_liga, nome_liga):
+@st.cache_data(ttl=600)
+def buscar_dados_understat(liga_nome):
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Connection': 'keep-alive'
-        }
-        
-        req = urllib.request.Request(url_liga, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as response:
-            html = response.read()
-            
-        tabelas = pd.read_html(html)
-        df_jogos = pd.DataFrame()
-        
-        for t in tabelas:
-            if 'Home' in t.columns and 'Away' in t.columns:
-                df_jogos = t
-                break
-                
-        if df_jogos.empty:
-            raise ValueError("Tabela principal não encontrada")
-            
-        df_jogos = df_jogos.dropna(subset=['Home', 'Away'])
-        df_jogos = df_jogos.rename(columns={'Home': 'Mandante', 'Away': 'Visitante', 'Score': 'Placar'})
-        df_jogos = df_jogos[df_jogos['Mandante'] != 'Home']
-        
-        df_jogos['Placar_Limpo'] = df_jogos['Placar'].str.split(' ').str[0]
-        df_jogos[['Gols_Mandante', 'Gols_Visitante']] = df_jogos['Placar_Limpo'].str.split('–', expand=True)
-        df_jogos['Gols_Mandante'] = pd.to_numeric(df_jogos['Gols_Mandante'], errors='coerce')
-        df_jogos['Gols_Visitante'] = pd.to_numeric(df_jogos['Gols_Visitante'], errors='coerce')
-        
-        return df_jogos
-        
-    except Exception as e:
-        return pd.DataFrame()
-
-@st.cache_data(ttl=1800) # Classificação pode durar 30 minutos em cache
-def raspar_classificacao(url_tabela):
-    try:
+        url = f"https://understat.com{LIGAS_UNDERSTAT[liga_nome]}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        req = urllib.request.Request(url_tabela, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as response:
-            html = response.read()
-        tabelas = pd.read_html(html)
         
-        for t in tabelas:
-            if 'Squad' in t.columns or 'Squad' in str(t.columns):
-                if isinstance(t.columns, pd.MultiIndex):
-                    t.columns = t.columns.get_level_values(-1)
-                
-                df_class = t[['Rk', 'Squad', 'MP', 'W', 'D', 'L', 'GF', 'GA', 'GD', 'Pts']].copy()
-                df_class = df_class.rename(columns={
-                    'Rk': 'Posição', 'Squad': 'Equipe', 'MP': 'Jogos',
-                    'W': 'Vitórias', 'D': 'Empates', 'L': 'Derrotas',
-                    'GF': 'Gols Pró', 'GA': 'Gols Contra', 'GD': 'Saldo', 'Pts': 'Pontos'
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.content, 'lxml')
+        scripts = soup.find_all('script')
+        
+        # Procura o bloco JSON contendo as estatísticas completas de todas as equipes
+        dados_times = None
+        for s in scripts:
+            if 'teamsData' in s.string if s.string else '':
+                match = re.search(r"teamsData\s*=\s*JSON\.parse\('([^']+)'\)", s.string)
+                if match:
+                    # Decodifica o JSON criptografado na página do Understat
+                    raw_data = match.group(1)
+                    dados_bytes = raw_data.encode('utf-8').decode('unicode-escape')
+                    dados_times = json.loads(dados_bytes)
+                    break
+        
+        if not dados_times:
+            raise ValueError("Dados não encontrados")
+            
+        # Organiza as estatísticas avançadas em uma tabela limpa
+        linhas = []
+        for id_time, info in dados_times.items():
+            nome_time = info['title']
+            historico = info['history']
+            for jogo in historico:
+                linhas.append({
+                    'Equipe': nome_time,
+                    'Gols_Feitos': jogo['g'],
+                    'Gols_Sofridos': jogo['ga'],
+                    'xG_Criado': jogo['xG'],
+                    'xG_Concedido': jogo['xGA'],
+                    'Chutes_Realizados': jogo['shots'],
+                    'Chutes_Concedidos': jogo['sh_allowed'],
+                    'Passes_Terço_Final': jogo['deep'],
+                    'Faltas_Cometidas': jogo['ppda']['fouls']
                 })
-                return df_class
-        return pd.DataFrame()
-    except:
+                
+        return pd.DataFrame(linhas)
+    except Exception as e:
+        st.error(f"Erro ao conectar com a base estatística: {e}")
         return pd.DataFrame()
 
 # --- INTERFACE DE SELEÇÃO ---
-st.sidebar.header("🔍 Seleção de Campeonato")
-liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga", list(LIGAS_DISPONIVEIS.keys()))
+st.sidebar.header("🌍 Seleção de Campeonato")
+liga_escolhida = st.sidebar.selectbox("1. Escolha a Liga Europeia", list(LIGAS_UNDERSTAT.keys()))
 
-df = raspar_dados_fbref(LIGAS_DISPONIVEIS[liga_escolhida], liga_escolhida)
+df = buscar_dados_understat(liga_escolhida)
 
-# Se o banco de dados vier vazio por bloqueio, cria uma lista mínima para a tela não travar
-if not df.empty:
-    df['Mandante'] = df['Mandante'].astype(str).str.strip()
-    df['Visitante'] = df['Visitante'].astype(str).str.strip()
-    lista_base = list(df['Mandante'].unique()) + list(df['Visitante'].unique())
+if df.empty:
+    st.warning("Aguardando resposta do servidor de dados...")
 else:
-    lista_base = ['Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Leeds United', 'Brentford', 'Flamengo', 'Palmeiras', 'Fluminense', 'Botafogo']
-
-if "Premier" in liga_escolhida:
-    lista_base = lista_base + ['Leeds United', 'Brentford']
-
-todos_times = sorted(list(set(lista_base)))
-todos_times = [t for t in todos_times if t and t != 'nan' and len(t) > 2 and t != 'Home']
-
-st.sidebar.header("🔍 Seleção Automática de Jogos")
-time_a = st.sidebar.selectbox("2. Escolha o Mandante (Casa)", todos_times)
-times_disponiveis_b = [t for t in todos_times if t != time_a]
-time_b = st.sidebar.selectbox("3. Escolha o Visitante (Fora)", times_disponiveis_b)
-
-# --- ABA DE VISUALIZAÇÃO DE CLASSIFICAÇÃO ---
-st.markdown(f"### 🏆 Classificação em Tempo Real: {liga_escolhida}")
-df_tabela_liga = raspar_classificacao(LINKS_CLASSIFICACAO[liga_escolhida])
-
-if not df_tabela_liga.empty:
-    st.dataframe(df_tabela_liga.set_index('Posição'), use_container_width=True)
-else:
-    st.caption("Carregando tabela geral de posições a partir dos servidores esportivos...")
-
-if st.sidebar.button("🚀 Processar Análise Realista"):
-    st.markdown("---")
-    st.subheader(f"🏟️ Confronto Gerado via Web Scraping: {time_a} vs {time_b}")
+    todos_times = sorted(df['Equipe'].unique())
     
-    if not df.empty:
-        hist_casa = df[(df['Mandante'] == time_a) & (df['Gols_Mandante'].notna())]
-        hist_fora = df[(df['Visitante'] == time_b) & (df['Gols_Visitante'].notna())]
-    else:
-        hist_casa = pd.DataFrame()
-        hist_fora = pd.DataFrame()
+    st.sidebar.header("🔍 Seleção Automática de Jogos")
+    time_a = st.sidebar.selectbox("2. Escolha o Mandante (Casa)", todos_times)
+    times_disponiveis_b = [t for t in todos_times if t != time_a]
+    time_b = st.sidebar.selectbox("3. Escolha o Visitante (Fora)", times_disponiveis_b)
+
+    # --- ABA PRINCIPAL: CLASSIFICAÇÃO POR DESEMPENHO TÉCNICO ---
+    st.markdown(f"### 🏆 Classificação Técnica de Performance: {liga_escolhida}")
+    tabela_resumo = df.groupby('Equipe').agg({
+        'Gols_Feitos': 'sum',
+        'xG_Criado': 'sum',
+        'Chutes_Realizados': 'sum',
+        'Passes_Terço_Final': 'sum',
+        'Faltas_Cometidas': 'sum'
+    }).sort_values(by='xG_Criado', ascending=False)
     
-    if time_a == "Leeds United" and hist_casa.empty:
-        gols_pro_casa, gols_contra_casa = 1.60, 1.20
-    else:
-        gols_pro_casa = hist_casa['Gols_Mandante'].mean() if not hist_casa.empty else 1.5
-        gols_contra_casa = hist_casa['Gols_Visitante'].mean() if not hist_casa.empty else 1.1
+    st.dataframe(tabela_resumo, use_container_width=True)
+
+    if st.sidebar.button("🚀 Processar Análise Profunda"):
+        st.markdown("---")
+        st.subheader(f"🏟️ Estatísticas Avançadas Comparativas: {time_a} vs {time_b}")
         
-    if time_b == "Brentford" and hist_fora.empty:
-        gols_pro_fora, gols_contra_fora = 1.50, 1.40
-    else:
-        gols_pro_fora = hist_fora['Gols_Visitante'].mean() if not hist_fora.empty else 1.2
-        gols_contra_fora = hist_fora['Gols_Mandante'].mean() if not hist_fora.empty else 1.4
-    
-    placar_casa = (gols_pro_casa + gols_contra_fora) / 2
-    placar_fora = (gols_pro_fora + gols_contra_casa) / 2
-    
-    if (time_a == "Leeds United" and time_b == "Brentford"):
-        placar_casa, placar_fora = 1.6, 1.6
+        # Separa as médias de cada equipe na temporada
+        stats_a = df[df['Equipe'] == time_a].mean(numeric_only=True)
+        stats_b = df[df['Equipe'] == time_b].mean(numeric_only=True)
         
-    expectativa_gols = placar_casa + placar_fora
+        # --- TABELA DE MÉDRICAS COMPARATIVAS ESTILO SOFASCORE ---
+        dados_comparativos = {
+            "Métrica de Desempenho (Média por Jogo)": [
+                "Média de Gols Marcados", 
+                "Expected Goals - Gols Esperados (xG)", 
+                "Total de Chutes Realizados", 
+                "Passes no Terço Final do Campo",
+                "Faltas Cometidas"
+            ],
+            time_a: [
+                f"{stats_a['Gols_Feitos']:.2f}", 
+                f"{stats_a['xG_Criado']:.2f}", 
+                f"{stats_a['Chutes_Realizados']:.1f}", 
+                f"{stats_a['Passes_Terço_Final']:.1f}",
+                f"{stats_a['Faltas_Cometidas']:.1f}"
+            ],
+            time_b: [
+                f"{stats_b['Gols_Feitos']:.2f}", 
+                f"{stats_b['xG_Criado']:.2f}", 
+                f"{stats_b['Chutes_Realizados']:.1f}", 
+                f"{stats_b['Passes_Terço_Final']:.1f}",
+                f"{stats_b['Faltas_Cometidas']:.1f}"
+            ]
+        }
+        st.table(pd.DataFrame(dados_comparativos))
+        
+        # --- SISTEMA DE PREVISÃO REORGANIZADO ---
+        st.markdown("### 🎯 O Veredito Estatístico do Confronto")
+        
+        # Cruzamento de xG de ataque contra xG de defesa
+        expectativa_gols_a = (stats_a['xG_Criado'] + stats_b['xG_Concedido']) / 2
+        expectativa_gols_b = (stats_b['xG_Criado'] + stats_a['xG_Concedido']) / 2
+        total_gols_esperado = expectativa_gols_a + expectativa_gols_b
+        
+        tip_gols = "OVER 2.5 Gols" if total_gols_esperado >= 2.5 else "UNDER 2.5 Gols"
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Placar de Gols Esperados (xG Proved)", f"{expectativa_gols_a:.1f} x {expectativa_gols_b:.1f}")
+        with c2:
+            st.metric("Total de Chutes Previstos na Partida", f"{stats_a['Chutes_Realizados'] + stats_b['Chutes_Realizados']:.1f}")
+            
+        st.success(f"🔥 **Recomendação Baseada em Volume de Jogo e xG:** {tip_gols} (Projeção de {total_gols_esperado:.2f} gols com alto volume de finalizações)")
 
-    # --- CÁLCULO REALISTA DE AMBAS MARCAM ---
-    jogos_marcou_casa = len(hist_casa[hist_casa['Gols_Mandante'] > 0]) / len(hist_casa) if not hist_casa.empty else 0.75
-    jogos_marcou_fora = len(hist_fora[hist_fora['Gols_Visitante'] > 0]) / len(hist_fora) if not hist_fora.empty else 0.70
-    prob_ambas_marcam = (jogos_marcou_casa + jogos_marcou_fora) / 2
-    tip_ambas = "AMBAS MARCAM: SIM" if prob_ambas_marcam >= 0.62 else "AMBAS MARCAM: NÃO"
-
-    # --- DEFINIÇÃO DOS PALPITES ---
-    tip_gols = "OVER 2.5 Gols" if expectativa_gols >= 2.5 else "UNDER 2.5 Gols"
-    
-    if placar_casa > placar_fora + 0.21:
-        resultado_final = f"Vitória do {time_a}"
-        confianca_resultado = abs(placar_casa - placar_fora)
-    elif placar_fora > placar_casa + 0.21:
-        resultado_final = f"Vitória do {time_b}"
-        confianca_resultado = abs(placar_fora - placar_casa)
-    else:
-        resultado_final = "Cenário de Empate / Ambas Marcam"
-        confianca_resultado = 0.60
-
-    # --- TABELA DE PROJEÇÕES ---
-    dados_mercado = {
-        "Mercado Analisado": ["Resultado Final", "Total de Gols (Linha 2.5)", "Ambas as Equipes Marcam"],
-        "Projeção Estatística Real": [f"{placar_casa:.1f} x {placar_fora:.1f}", f"{expectativa_gols:.2f} Gols Estimados", f"{prob_ambas_marcam*100:.1f}% de Tendência"],
-        "Tendência Recomendada": [resultado_final, tip_gols, tip_ambas]
-    }
-    st.table(pd.DataFrame(dados_mercado))
-
-    # --- ELEIÇÃO DA MELHOR ENTRADA ---
-    st.markdown("---")
-    st.markdown("## 👑 A MELHOR ENTRADA PARA ESTA PARTIDA")
-    
-    distancia_gols = abs(expectativa_gols - 2.5)
-    distancia_ambas = abs(prob_ambas_marcam - 0.62)
-    
-    dicionario_confianca = {
-        f"🏆 Resultado Final -> **{resultado_final}**": confianca_resultado,
-        f"⚽ Mercado de Gols -> **{tip_gols}**": distancia_gols,
-        f"🤝 Mercado de Ambas Marcam -> **{tip_ambas}**": distancia_ambas
-    }
-    
-    melhor_opcao = max(dicionario_confianca, key=dicionario_confianca.get)
-    st.success(f"🔥 **Palpite de Alta Confiança da IA:** {melhor_opcao}")
-    
-    # --- HISTÓRICO ISOLADO DE CADA TIME ---
-    st.markdown("---")
-    col_h1, col_h2 = st.columns(2)
-    
-    with col_h1:
-        st.markdown(f"#### 📅 Últimos Jogos do Mandante: {time_a}")
-        if not df.empty:
-            ultimos_casa = df[(df['Mandante'] == time_a) | (df['Visitante'] == time_a)].dropna(subset=['Gols_Mandante']).tail(5)
-            if not ultimos_casa.empty:
-                st.dataframe(ultimos_casa[['Date', 'Mandante', 'Placar', 'Visitante']], use_container_width=True)
-            else:
-                st.caption("Sem histórico recente para exibir.")
-       
 
 

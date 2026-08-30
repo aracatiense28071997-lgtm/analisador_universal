@@ -64,8 +64,7 @@ def raspar_dados_fbref(url_liga, nome_liga):
         return df_jogos
         
     except Exception as e:
-        st.error(f"Erro temporário de conexão com os servidores. Recarregue a página.")
-        return pd.DataFrame(columns=['Mandante', 'Visitante', 'Placar', 'Gols_Mandante', 'Gols_Visitante', 'Date'])
+        return pd.DataFrame()
 
 @st.cache_data(ttl=1800) # Classificação pode durar 30 minutos em cache
 def raspar_classificacao(url_tabela):
@@ -209,4 +208,8 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
         if not df.empty:
             ultimos_casa = df[(df['Mandante'] == time_a) | (df['Visitante'] == time_a)].dropna(subset=['Gols_Mandante']).tail(5)
             if not ultimos_casa.empty:
+                st.dataframe(ultimos_casa[['Date', 'Mandante', 'Placar', 'Visitante']], use_container_width=True)
+            else:
+                st.caption("Aguardando novas rodadas computadas pelo servidor.")
+        else:
 

@@ -210,6 +210,7 @@ if st.sidebar.button("🚀 Processar Análise Realista"):
             if not ultimos_casa.empty:
                 st.dataframe(ultimos_casa[['Date', 'Mandante', 'Placar', 'Visitante']], use_container_width=True)
             else:
-                st.caption("Aguardando novas rodadas computadas pelo servidor.")
-        else:
+                st.caption("Sem histórico recente para exibir.")
+       
+
 
